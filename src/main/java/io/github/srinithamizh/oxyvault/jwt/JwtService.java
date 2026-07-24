@@ -1,7 +1,6 @@
 package io.github.srinithamizh.oxyvault.jwt;
 
 import io.github.srinithamizh.oxyvault.entity.User;
-import io.github.srinithamizh.oxyvault.exception.UserNotFoundException;
 import io.github.srinithamizh.oxyvault.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
