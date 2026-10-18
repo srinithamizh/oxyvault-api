@@ -20,10 +20,10 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 254)
     private String email;
 
     @Column(nullable = false)
@@ -33,6 +33,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     private Role role;
 
-    @Column(nullable = false, unique = true)
+    // Not unique: every user starts at 0 and it is bumped on logout.
+    // @Builder.Default is required, otherwise the builder ignores "= 0L" and inserts null.
+    @Column(name = "token_version", nullable = false)
+    @Builder.Default
     private Long tokenVersion = 0L;
 }

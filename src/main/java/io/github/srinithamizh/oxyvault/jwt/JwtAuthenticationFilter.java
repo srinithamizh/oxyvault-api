@@ -1,23 +1,31 @@
 package io.github.srinithamizh.oxyvault.jwt;
 
+import io.github.srinithamizh.oxyvault.security.UserPrincipal;
 import io.github.srinithamizh.oxyvault.service.CustomUserDetailsService;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
@@ -29,45 +37,47 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String authorizationHeader = request.getHeader("Authorization");
+        String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
+        if (authorizationHeader != null
+                && authorizationHeader.startsWith(BEARER_PREFIX)
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+            authenticate(authorizationHeader.substring(BEARER_PREFIX.length()).trim(), request);
         }
 
-        String token = authorizationHeader.substring(7);
+        // An invalid token simply leaves the request unauthenticated. Protected endpoints then
+        // answer 401 via the entry point, while public ones (login, register) keep working even
+        // when the client still sends a stale token.
+        filterChain.doFilter(request, response);
+    }
 
+    private void authenticate(String token, HttpServletRequest request) {
         try {
-            if (!jwtService.validateToken(token)) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            Claims claims = jwtService.extractClaims(token);
+
+            String username = claims.getSubject();
+            if (username == null) {
                 return;
             }
 
-            String username = jwtService.extractUsername(token);
+            // One database lookup per request: the same row supplies authorities and token version.
+            UserPrincipal principal = userDetailsService.loadByUsername(username);
 
-            if (username != null &&
-                    SecurityContextHolder.getContext().getAuthentication() == null) {
-
-                UserDetails userDetails =
-                        userDetailsService.loadUserByUsername(username);
-
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,
-                                userDetails.getAuthorities()
-                        );
-
-                SecurityContextHolder.getContext()
-                        .setAuthentication(authentication);
+            if (!jwtService.isTokenVersionCurrent(claims, principal)) {
+                log.debug("Rejected JWT for '{}': token version is no longer current", username);
+                return;
             }
 
-        } catch (JwtException | IllegalArgumentException e) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            return;
-        }
+            UsernamePasswordAuthenticationToken authentication =
+                    UsernamePasswordAuthenticationToken.authenticated(
+                            principal, null, principal.getAuthorities());
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-        filterChain.doFilter(request, response);
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException e) {
+            log.debug("Rejected JWT: {}", e.getMessage());
+        }
     }
 }

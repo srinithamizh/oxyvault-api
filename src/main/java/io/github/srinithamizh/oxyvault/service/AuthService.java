@@ -9,15 +9,20 @@ import io.github.srinithamizh.oxyvault.exception.UserAlreadyExistsException;
 import io.github.srinithamizh.oxyvault.exception.UserNotFoundException;
 import io.github.srinithamizh.oxyvault.jwt.JwtService;
 import io.github.srinithamizh.oxyvault.repository.UserRepository;
+import io.github.srinithamizh.oxyvault.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -30,69 +35,55 @@ public class AuthService {
 
     private final JwtService jwtService;
 
+    @Transactional
     public void register(RegisterRequest request) {
-        String username = request.username()
-                .trim();
+        String username = request.username().trim();
+        // Locale.ROOT: a plain toLowerCase() breaks under some default locales (e.g. Turkish "I").
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
 
-        String email = request.email()
-                .trim()
-                .toLowerCase();
-
-
-        // Check duplicate username
         if (userRepository.existsByUsername(username)) {
-            throw new UserAlreadyExistsException(
-                    "Username already exists"
-            );
+            throw new UserAlreadyExistsException("Username already exists");
         }
 
-
-        // Check duplicate email
         if (userRepository.existsByEmail(email)) {
-            throw new UserAlreadyExistsException(
-                    "Email already registered"
-            );
+            throw new UserAlreadyExistsException("Email already registered");
         }
-
 
         User user = User.builder()
                 .username(username)
                 .email(email)
-                .password(
-                        passwordEncoder.encode(
-                                request.password()
-                        )
-                )
+                .password(passwordEncoder.encode(request.password()))
                 .role(Role.USER)
                 .build();
 
-
-        userRepository.save(user);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException e) {
+            // Two concurrent registrations can both pass the exists checks above;
+            // the unique constraints are the real guard, so report it as a conflict, not a 500.
+            log.debug("Registration rejected by a database constraint", e);
+            throw new UserAlreadyExistsException("Username or email already registered");
+        }
     }
 
     public AuthResponse login(AuthRequest request) {
-        String identifier = request.identifier().trim();
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.identifier().trim(), request.password()));
 
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(identifier, request.password()));
+        // The principal was already loaded during authentication, so no second user query is needed.
+        // instanceof is false for null, so this also covers the null case.
+        if (!(authentication.getPrincipal() instanceof UserPrincipal principal)) {
+            throw new IllegalStateException("Unexpected principal after successful authentication");
+        }
 
-        User user = userRepository.findByUsernameOrEmail(identifier,identifier)
-                .orElseThrow(() -> new UserNotFoundException("Invalid credentials"));
-
-        String token = jwtService.generateToken(user);
-
-        return new AuthResponse(token);
+        return new AuthResponse(jwtService.generateToken(principal));
     }
 
     @Transactional
     public void logout(String username) {
-
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() ->
-                        new UserNotFoundException("User not found")
-                );
-
-        user.setTokenVersion(user.getTokenVersion()+1);
-
-        userRepository.save(user);
+        // Single atomic UPDATE: no read-modify-write, and concurrent logouts cannot lose an increment.
+        if (userRepository.incrementTokenVersion(username) == 0) {
+            throw new UserNotFoundException("User not found");
+        }
     }
 }

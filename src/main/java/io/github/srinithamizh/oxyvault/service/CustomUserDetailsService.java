@@ -1,13 +1,15 @@
 package io.github.srinithamizh.oxyvault.service;
 
+import io.github.srinithamizh.oxyvault.entity.User;
 import io.github.srinithamizh.oxyvault.exception.UserNotFoundException;
 import io.github.srinithamizh.oxyvault.repository.UserRepository;
-
+import io.github.srinithamizh.oxyvault.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
+
+import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -15,11 +17,32 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
 
+    /**
+     * Used by the AuthenticationManager at login. The identifier is a username or an email.
+     * Exactly one query runs, and the lookup is deterministic: it never matches two different users.
+     */
     @Override
-    public UserDetails loadUserByUsername(String identifier) {
-        var user = userRepository.findByUsernameOrEmail(identifier, identifier).orElseThrow(() -> new UserNotFoundException("User not found with username/email: " + identifier));
+    public UserPrincipal loadUserByUsername(String identifier) {
+        return findByIdentifier(identifier.trim())
+                .map(UserPrincipal::from)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+    }
 
-        return User.withUsername(user.getUsername()).password(user.getPassword()).roles(user.getRole().name()).build();
+    /**
+     * Used by the JWT filter. The token subject is always the exact username.
+     */
+    public UserPrincipal loadByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .map(UserPrincipal::from)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+    }
 
+    private Optional<User> findByIdentifier(String identifier) {
+        if (identifier.indexOf('@') >= 0) {
+            // Emails are stored lower-cased. Fall back to username for legacy accounts containing '@'.
+            return userRepository.findByEmail(identifier.toLowerCase(Locale.ROOT))
+                    .or(() -> userRepository.findByUsername(identifier));
+        }
+        return userRepository.findByUsername(identifier);
     }
 }

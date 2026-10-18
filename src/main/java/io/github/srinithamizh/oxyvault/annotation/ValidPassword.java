@@ -15,7 +15,7 @@ import java.lang.annotation.Target;
 public @interface ValidPassword {
 
     String message() default
-            "Password must contain uppercase, lowercase, number, special character and minimum 8 characters";
+            "Password must be 8 to 72 characters and contain an uppercase letter, a lowercase letter, a number and a special character";
 
     Class<?>[] groups() default {};
 

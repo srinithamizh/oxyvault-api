@@ -1,0 +1,24 @@
+# Active with @ActiveProfiles("test"). Overrides application.yaml so tests use an
+# in-memory H2 database and do not need Postgres, Docker or a .env file.
+spring:
+  docker:
+    compose:
+      enabled: false
+
+  datasource:
+    # In-memory: exists only inside the test JVM and vanishes when it exits (pass, fail or crash).
+    url: jdbc:h2:mem:oxyvault-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop   # schema created at startup, dropped when the context closes
+
+jwt:
+  secret-key: test-secret-key-that-is-at-least-32-bytes-long
+  expiration: 3600000
+
+cors:
+  allowed-origins: http://localhost:3000

@@ -15,11 +15,10 @@ spring:
     password: ${POSTGRES_PASSWORD}
 
   jpa:
+    # REST API: don't keep a DB connection checked out for the whole request.
+    open-in-view: false
     hibernate:
       ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 jwt:
   secret-key: ${JWT_SECRET_KEY}
@@ -32,4 +31,5 @@ logging:
   level:
     org:
       springframework:
-        security: TRACE
+        # TRACE logs every filter in the chain on every request. Set SECURITY_LOG_LEVEL=TRACE when debugging.
+        security: ${SECURITY_LOG_LEVEL:INFO}
