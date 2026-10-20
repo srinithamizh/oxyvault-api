@@ -35,10 +35,10 @@ class AuthIntegrationTest {
         return "user" + UUID.randomUUID().toString().substring(0, 8);
     }
 
-    private ResultActions register(String username, String password) throws Exception {
+    private ResultActions register(String firstName, String lastName, String username, String password) throws Exception {
         String body = """
-                {"username":"%s","email":"%s@example.com","password":"%s"}
-                """.formatted(username, username, password);
+                {"firstName":"%s","lastName":"%s","username":"%s","email":"%s@example.com","password":"%s"}
+                """.formatted(firstName, lastName, username, username, password);
 
         return mockMvc.perform(post("/auth/register").contentType(APPLICATION_JSON).content(body));
     }
@@ -62,22 +62,25 @@ class AuthIntegrationTest {
     // Regression: tokenVersion used to be unique, and the builder inserted null, so registration failed.
     @Test
     void twoUsersCanRegister() throws Exception {
-        register(uniqueName(), PASSWORD).andExpect(status().isCreated());
-        register(uniqueName(), PASSWORD).andExpect(status().isCreated());
+        register(uniqueName(), uniqueName(), uniqueName(), PASSWORD).andExpect(status().isCreated());
+        register(uniqueName(), uniqueName(), uniqueName(), PASSWORD).andExpect(status().isCreated());
     }
 
     @Test
     void duplicateRegistrationIsConflict() throws Exception {
-        String name = uniqueName();
 
-        register(name, PASSWORD).andExpect(status().isCreated());
-        register(name, PASSWORD).andExpect(status().isConflict());
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isConflict());
     }
 
     // Regression: validation errors used to come back as 500.
     @Test
     void invalidRegistrationIsBadRequestWithFieldErrors() throws Exception {
-        register("ab", "weak")
+        register("ab", "ab", "ab", "weak")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.username").exists())
                 .andExpect(jsonPath("$.errors.password").exists());
@@ -85,10 +88,12 @@ class AuthIntegrationTest {
 
     @Test
     void loginWithUsernameReturnsToken() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
 
-        attemptLogin(name, PASSWORD)
+        attemptLogin(username, PASSWORD)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isNotEmpty());
     }
@@ -96,20 +101,24 @@ class AuthIntegrationTest {
     // Regression: emails are stored lower-cased, but login used to compare the identifier as typed.
     @Test
     void loginWithEmailIsCaseInsensitive() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
 
-        attemptLogin((name + "@example.com").toUpperCase(), PASSWORD)
+        attemptLogin((username + "@example.com").toUpperCase(), PASSWORD)
                 .andExpect(status().isOk());
     }
 
     // Regression: bad credentials used to come back as 500.
     @Test
     void wrongPasswordIsUnauthorized() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
 
-        attemptLogin(name, "Wrong!Pass1").andExpect(status().isUnauthorized());
+        attemptLogin(username, "Wrong!Pass1").andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -120,13 +129,15 @@ class AuthIntegrationTest {
     // Regression: a stale token in the header used to make public endpoints return 401.
     @Test
     void staleTokenDoesNotBlockLogin() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
 
         mockMvc.perform(post("/auth/login")
                         .header("Authorization", "Bearer not-a-valid-token")
                         .contentType(APPLICATION_JSON)
-                        .content("{\"identifier\":\"" + name + "\",\"password\":\"" + PASSWORD + "\"}"))
+                        .content("{\"identifier\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}"))
                 .andExpect(status().isOk());
     }
 
@@ -144,9 +155,11 @@ class AuthIntegrationTest {
 
     @Test
     void logoutRevokesToken() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
-        String token = loginAndGetToken(name, PASSWORD);
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
+        String token = loginAndGetToken(username, PASSWORD);
 
         mockMvc.perform(post("/auth/logout").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
@@ -158,14 +171,16 @@ class AuthIntegrationTest {
 
     @Test
     void newLoginAfterLogoutGivesWorkingToken() throws Exception {
-        String name = uniqueName();
-        register(name, PASSWORD).andExpect(status().isCreated());
-        String oldToken = loginAndGetToken(name, PASSWORD);
+        String firstname = uniqueName();
+        String lastname = uniqueName();
+        String username = uniqueName();
+        register(firstname, lastname, username, PASSWORD).andExpect(status().isCreated());
+        String oldToken = loginAndGetToken(username, PASSWORD);
 
         mockMvc.perform(post("/auth/logout").header("Authorization", "Bearer " + oldToken))
                 .andExpect(status().isOk());
 
-        String newToken = loginAndGetToken(name, PASSWORD);
+        String newToken = loginAndGetToken(username, PASSWORD);
 
         mockMvc.perform(post("/auth/logout").header("Authorization", "Bearer " + newToken))
                 .andExpect(status().isOk());

@@ -8,6 +8,14 @@ import jakarta.validation.constraints.Size;
 
 public record RegisterRequest(
 
+        @NotBlank(message = "FirstName is required")
+        @Size(max = 254, message = "FirstName must be at most 254 characters")
+        String firstName,
+
+        @NotBlank(message = "lastName is required")
+        @Size(max = 254, message = "LastName must be at most 254 characters")
+        String lastName,
+
         // No '@' allowed, so a username can never be mistaken for (or squat on) someone's email at login.
         @NotBlank(message = "Username is required")
         @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")

@@ -79,6 +79,10 @@ public class AuthService {
         return new AuthResponse(jwtService.generateToken(principal));
     }
 
+    public boolean isUsernameExists(String username) {
+        return userRepository.existsByUsername(username);
+    }
+
     @Transactional
     public void logout(String username) {
         // Single atomic UPDATE: no read-modify-write, and concurrent logouts cannot lose an increment.
