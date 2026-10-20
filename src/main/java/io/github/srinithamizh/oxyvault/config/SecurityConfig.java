@@ -53,7 +53,6 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
-                        // Covers /auth/logout too (the old "/logout" matcher never matched anything).
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(
