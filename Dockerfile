@@ -1,15 +1,24 @@
-
-# Use Java 21 runtime
-FROM eclipse-temurin:21-jre
-
-# Set working directory inside the container
+# ---------- Build stage ----------
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 
-# Copy the Spring Boot JAR into the container
-COPY target/*.jar app.jar
+# Cache dependencies first
+COPY pom.xml .
+RUN mvn -B dependency:go-offline
 
-# Expose the Spring Boot application port
+# Build the jar inside Docker (no local target/ folder needed)
+COPY src ./src
+RUN mvn -B clean package -DskipTests
+
+# ---------- Runtime stage ----------
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+
+COPY --from=build /app/target/*.jar app.jar
+
+# Non-secret default only. Real secrets come from the platform's env vars.
+ENV JAVA_OPTS="-Xmx512m -Xms256m"
+
 EXPOSE 8080
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
