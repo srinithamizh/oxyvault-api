@@ -2,6 +2,7 @@ package in.srinithamizh.oxyvault.controller;
 
 import in.srinithamizh.oxyvault.dto.CategoryRequest;
 import in.srinithamizh.oxyvault.dto.CategoryResponse;
+import in.srinithamizh.oxyvault.enums.CategoryType;
 import in.srinithamizh.oxyvault.security.UserPrincipal;
 import in.srinithamizh.oxyvault.service.CategoryService;
 import jakarta.validation.Valid;
@@ -21,8 +22,11 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    public List<CategoryResponse> getCategories(@AuthenticationPrincipal UserPrincipal principal) {
-        return categoryService.getCategories(principal.getId());
+    public List<CategoryResponse> getCategories(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) CategoryType type
+    ) {
+        return categoryService.getCategories(principal.getId(), type);
     }
 
     @PostMapping

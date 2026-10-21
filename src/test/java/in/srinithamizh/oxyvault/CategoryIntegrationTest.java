@@ -73,6 +73,30 @@ class CategoryIntegrationTest {
                 .andExpect(jsonPath("$[0].id").value(categoryId))
                 .andExpect(jsonPath("$[0].name").value("Salary"));
 
+        mockMvc.perform(get("/categories")
+                        .header("Authorization", "Bearer " + token)
+                        .param("type", "EXPENSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+
+        String expenseCategory = mockMvc.perform(post("/categories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"Food\",\"type\":\"EXPENSE\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String expenseCategoryId = JsonPath.read(expenseCategory, "$.id");
+        mockMvc.perform(get("/categories")
+                        .header("Authorization", "Bearer " + token)
+                        .param("type", "EXPENSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(expenseCategoryId))
+                .andExpect(jsonPath("$[0].type").value("EXPENSE"));
+        mockMvc.perform(delete("/categories/{categoryId}", expenseCategoryId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
         mockMvc.perform(put("/categories/{categoryId}", categoryId)
                         .header("Authorization", "Bearer " + token)
                         .contentType(APPLICATION_JSON)

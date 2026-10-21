@@ -4,9 +4,12 @@ import in.srinithamizh.oxyvault.dto.CategoryRequest;
 import in.srinithamizh.oxyvault.dto.CategoryResponse;
 import in.srinithamizh.oxyvault.entity.Category;
 import in.srinithamizh.oxyvault.entity.User;
+import in.srinithamizh.oxyvault.enums.CategoryType;
 import in.srinithamizh.oxyvault.exception.CategoryNotFoundException;
+import in.srinithamizh.oxyvault.exception.TransactionReferenceConflictException;
 import in.srinithamizh.oxyvault.exception.UserNotFoundException;
 import in.srinithamizh.oxyvault.repository.CategoryRepository;
+import in.srinithamizh.oxyvault.repository.TransactionRepository;
 import in.srinithamizh.oxyvault.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,11 +23,15 @@ import java.util.UUID;
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<CategoryResponse> getCategories(UUID userId) {
-        return categoryRepository.findAllByUserIdOrderByNameAsc(userId).stream()
+    public List<CategoryResponse> getCategories(UUID userId, CategoryType type) {
+        List<Category> categories = type == null
+                ? categoryRepository.findAllByUserIdOrderByNameAsc(userId)
+                : categoryRepository.findAllByUserIdAndTypeOrderByNameAsc(userId, type);
+        return categories.stream()
                 .map(CategoryService::toResponse)
                 .toList();
     }
@@ -44,6 +51,11 @@ public class CategoryService {
     @Transactional
     public CategoryResponse updateCategory(UUID userId, UUID categoryId, CategoryRequest request) {
         Category category = findOwnedCategory(userId, categoryId);
+        if (category.getType() != request.type() && transactionRepository.existsByCategoryId(categoryId)) {
+            throw new TransactionReferenceConflictException(
+                    "You can't change this category's type because it is recorded in a transaction."
+            );
+        }
         category.setName(request.name().trim());
         category.setType(request.type());
         return toResponse(category);
@@ -51,11 +63,18 @@ public class CategoryService {
 
     @Transactional
     public void deleteCategory(UUID userId, UUID categoryId) {
-        categoryRepository.delete(findOwnedCategory(userId, categoryId));
+        Category category = findOwnedCategory(userId, categoryId);
+        if (transactionRepository.existsByCategoryId(categoryId)) {
+            throw new TransactionReferenceConflictException(
+                    "You can't delete this category because it is recorded in a transaction. "
+                            + "Update the transaction and then delete this category."
+            );
+        }
+        categoryRepository.delete(category);
     }
 
     private Category findOwnedCategory(UUID userId, UUID categoryId) {
-        return categoryRepository.findByIdAndUserId(categoryId, userId)
+        return categoryRepository.findByIdAndUserIdForUpdate(categoryId, userId)
                 .orElseThrow(() -> new CategoryNotFoundException("Category not found"));
     }
 

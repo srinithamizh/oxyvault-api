@@ -5,8 +5,10 @@ import in.srinithamizh.oxyvault.dto.SourceResponse;
 import in.srinithamizh.oxyvault.entity.Source;
 import in.srinithamizh.oxyvault.entity.User;
 import in.srinithamizh.oxyvault.exception.SourceNotFoundException;
+import in.srinithamizh.oxyvault.exception.TransactionReferenceConflictException;
 import in.srinithamizh.oxyvault.exception.UserNotFoundException;
 import in.srinithamizh.oxyvault.repository.SourceRepository;
+import in.srinithamizh.oxyvault.repository.TransactionRepository;
 import in.srinithamizh.oxyvault.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class SourceService {
 
     private final SourceRepository sourceRepository;
+    private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -51,12 +54,19 @@ public class SourceService {
 
     @Transactional
     public void deleteSource(UUID userId, UUID sourceId) {
-        sourceRepository.delete(findOwnedSource(userId, sourceId));
+        Source source = findOwnedSource(userId, sourceId);
+        if (transactionRepository.existsBySourceId(sourceId)) {
+            throw new TransactionReferenceConflictException(
+                    "You can't delete this source because it is recorded in a transaction. "
+                            + "Update the transaction and then delete this source."
+            );
+        }
+        sourceRepository.delete(source);
         log.info("Deleted source id={} for user id={}", sourceId, userId);
     }
 
     private Source findOwnedSource(UUID userId, UUID sourceId) {
-        return sourceRepository.findByIdAndUserId(sourceId, userId)
+        return sourceRepository.findByIdAndUserIdForUpdate(sourceId, userId)
                 .orElseThrow(() -> new SourceNotFoundException("Source not found"));
     }
 

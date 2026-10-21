@@ -5,8 +5,10 @@ import in.srinithamizh.oxyvault.dto.PaymentMethodResponse;
 import in.srinithamizh.oxyvault.entity.PaymentMethod;
 import in.srinithamizh.oxyvault.entity.User;
 import in.srinithamizh.oxyvault.exception.PaymentMethodNotFoundException;
+import in.srinithamizh.oxyvault.exception.TransactionReferenceConflictException;
 import in.srinithamizh.oxyvault.exception.UserNotFoundException;
 import in.srinithamizh.oxyvault.repository.PaymentMethodRepository;
+import in.srinithamizh.oxyvault.repository.TransactionRepository;
 import in.srinithamizh.oxyvault.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class PaymentMethodService {
 
     private final PaymentMethodRepository paymentMethodRepository;
+    private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -58,7 +61,14 @@ public class PaymentMethodService {
 
     @Transactional
     public void deletePaymentMethod(UUID userId, UUID paymentMethodId) {
-        paymentMethodRepository.delete(findOwnedPaymentMethod(userId, paymentMethodId));
+        PaymentMethod paymentMethod = findOwnedPaymentMethod(userId, paymentMethodId);
+        if (transactionRepository.existsByPaymentId(paymentMethodId)) {
+            throw new TransactionReferenceConflictException(
+                    "You can't delete this payment method because it is recorded in a transaction. "
+                            + "Update the transaction and then delete this payment method."
+            );
+        }
+        paymentMethodRepository.delete(paymentMethod);
         log.info("Deleted payment method id={} for user id={}", paymentMethodId, userId);
     }
 

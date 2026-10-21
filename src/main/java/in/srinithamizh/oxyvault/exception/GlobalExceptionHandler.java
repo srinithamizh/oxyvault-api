@@ -44,6 +44,25 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
+    @ExceptionHandler(TransactionNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleTransactionNotFound(TransactionNotFoundException ex) {
+        return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(TransactionReferenceConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleTransactionReferenceConflict(
+            TransactionReferenceConflictException ex
+    ) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientSourceBalanceException.class)
+    public ResponseEntity<Map<String, Object>> handleInsufficientSourceBalance(
+            InsufficientSourceBalanceException ex
+    ) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     // Wrong password / unknown user at login. Always the same message so accounts cannot be probed.
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<Map<String, Object>> handleAuthentication(AuthenticationException ex) {
