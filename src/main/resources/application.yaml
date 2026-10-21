@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 application:
   name: OxyVault
@@ -32,6 +32,7 @@ cors:
 
 logging:
   level:
+    in.srinithamizh.oxyvault: ${APP_LOG_LEVEL:INFO}
     org:
       springframework:
         # TRACE logs every filter in the chain on every request. Set SECURITY_LOG_LEVEL=TRACE when debugging.

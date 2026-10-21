@@ -60,6 +60,7 @@ public class AuthService {
 
         try {
             userRepository.saveAndFlush(user);
+            log.info("Registered user id={}", user.getId());
         } catch (DataIntegrityViolationException e) {
             // Two concurrent registrations can both pass the exists checks above;
             // the unique constraints are the real guard, so report it as a conflict, not a 500.
@@ -78,6 +79,7 @@ public class AuthService {
             throw new IllegalStateException("Unexpected principal after successful authentication");
         }
 
+        log.info("Successful login for user id={}", principal.getId());
         return new AuthResponse(jwtService.generateToken(principal));
     }
 
@@ -91,5 +93,6 @@ public class AuthService {
         if (userRepository.incrementTokenVersion(username) == 0) {
             throw new UserNotFoundException("User not found");
         }
+        log.info("Revoked active tokens during logout");
     }
 }

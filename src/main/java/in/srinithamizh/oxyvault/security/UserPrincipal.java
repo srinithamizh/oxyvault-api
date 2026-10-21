@@ -25,7 +25,6 @@ public final class UserPrincipal implements UserDetails {
 
     @Getter
     private final UUID id;
-    @Getter
     private final String username;
     private final String password;
     @Getter
