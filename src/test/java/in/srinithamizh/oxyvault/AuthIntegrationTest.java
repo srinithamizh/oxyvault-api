@@ -1,6 +1,8 @@
 package in.srinithamizh.oxyvault;
 
 import com.jayway.jsonpath.JsonPath;
+import in.srinithamizh.oxyvault.enums.Role;
+import in.srinithamizh.oxyvault.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,7 +13,10 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,6 +35,9 @@ class AuthIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private static String uniqueName() {
         return "user" + UUID.randomUUID().toString().substring(0, 8);
@@ -56,7 +64,7 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        return JsonPath.read(response, "$.token");
+        return JsonPath.read(response, "$.accessToken");
     }
 
     // Regression: tokenVersion used to be unique, and the builder inserted null, so registration failed.
@@ -95,7 +103,7 @@ class AuthIntegrationTest {
 
         attemptLogin(username, PASSWORD)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
     }
 
     // Regression: emails are stored lower-cased, but login used to compare the identifier as typed.
@@ -145,6 +153,91 @@ class AuthIntegrationTest {
     @Test
     void protectedEndpointWithoutTokenIsUnauthorized() throws Exception {
         mockMvc.perform(post("/auth/logout")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void userListRequiresAdminRole() throws Exception {
+        String username = uniqueName();
+        register(uniqueName(), uniqueName(), username, PASSWORD).andExpect(status().isCreated());
+        String token = loginAndGetToken(username, PASSWORD);
+
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminUserListIsPagedAndDoesNotExposeCredentials() throws Exception {
+        String username = uniqueName();
+        register(uniqueName(), uniqueName(), username, PASSWORD).andExpect(status().isCreated());
+        var user = userRepository.findByUsername(username).orElseThrow();
+        user.setRole(Role.ADMIN);
+        userRepository.save(user);
+        String token = loginAndGetToken(username, PASSWORD);
+
+        mockMvc.perform(get("/admin/users?page=0&size=1000")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].username").value(hasItem(username)))
+                .andExpect(jsonPath("$.page.size").value(100))
+                .andExpect(jsonPath("$.content[0].password").doesNotExist())
+                .andExpect(jsonPath("$.content[0].tokenVersion").doesNotExist());
+    }
+
+    @Test
+    void adminCanUpdateUserRoleAndRoleTakesEffectForExistingToken() throws Exception {
+        String adminUsername = uniqueName();
+        register(uniqueName(), uniqueName(), adminUsername, PASSWORD).andExpect(status().isCreated());
+        var admin = userRepository.findByUsername(adminUsername).orElseThrow();
+        admin.setRole(Role.ADMIN);
+        userRepository.save(admin);
+        String adminToken = loginAndGetToken(adminUsername, PASSWORD);
+
+        String targetUsername = uniqueName();
+        register(uniqueName(), uniqueName(), targetUsername, PASSWORD).andExpect(status().isCreated());
+        var target = userRepository.findByUsername(targetUsername).orElseThrow();
+        String targetToken = loginAndGetToken(targetUsername, PASSWORD);
+
+        mockMvc.perform(patch("/admin/users/{userId}/role", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("ADMIN"))
+                .andExpect(jsonPath("$.username").value(targetUsername));
+
+        mockMvc.perform(get("/admin/users")
+                        .header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void regularUserCannotUpdateRoles() throws Exception {
+        String username = uniqueName();
+        register(uniqueName(), uniqueName(), username, PASSWORD).andExpect(status().isCreated());
+        String token = loginAndGetToken(username, PASSWORD);
+        var target = userRepository.findByUsername(username).orElseThrow();
+
+        mockMvc.perform(patch("/admin/users/{userId}/role", target.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void roleUpdateForUnknownUserReturnsNotFound() throws Exception {
+        String username = uniqueName();
+        register(uniqueName(), uniqueName(), username, PASSWORD).andExpect(status().isCreated());
+        var admin = userRepository.findByUsername(username).orElseThrow();
+        admin.setRole(Role.ADMIN);
+        userRepository.save(admin);
+        String token = loginAndGetToken(username, PASSWORD);
+
+        mockMvc.perform(patch("/admin/users/{userId}/role", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"role\":\"USER\"}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

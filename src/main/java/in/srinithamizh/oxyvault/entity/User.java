@@ -1,5 +1,6 @@
 package in.srinithamizh.oxyvault.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import in.srinithamizh.oxyvault.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -32,6 +33,7 @@ public class User {
     @Column(nullable = false, unique = true, length = 254)
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
@@ -41,6 +43,7 @@ public class User {
 
     // Not unique: every user starts at 0 and it is bumped on logout.
     // @Builder.Default is required, otherwise the builder ignores "= 0L" and inserts null.
+    @JsonIgnore
     @Column(name = "token_version", nullable = false)
     @Builder.Default
     private Long tokenVersion = 0L;

@@ -1,6 +1,5 @@
 package in.srinithamizh.oxyvault.dto;
 
-import in.srinithamizh.oxyvault.entity.User;
 import in.srinithamizh.oxyvault.enums.Role;
 
 import java.util.UUID;
